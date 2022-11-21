@@ -1,0 +1,56 @@
+# kiiglobal/kii-core travis-ci integration with SonarCloud
+# errata:
+# - sudo/dist/group are set so as to get Blue Box VMs, necessary for [loopback]
+#   IPv6 support
+dist: focal
+language: c++
+os: linux
+#sudo: required
+
+services:
+  - docker
+
+cache:
+  ccache: true
+  directories:
+    - $HOME/cache
+
+addons:
+  sonarcloud:
+    organization: "kiiglobal"
+    token:
+      secure: "HV9y0j1G2RKcIKCfhLbiUt0mrA/OqIBGkiNR1M5FSp66KXcpXRUZK7FOEGQRpZwPfvX1CsUyybBXd1Hdu8QYvOhoIXWae/Kj7QcbjB83Zn7PyT3HG9Dl7QNFSaEd0uKKBOJ0QXRH7EKHHqCV34k6wegQPnBtQEHxQqgkpGqYkw6lLrpYCW5CsZcGH9KKvxSrWENUSmulXK9n/PyAJSus2yDp18W3KyudFBQaBLHCb0cBvvAxan3+xE9cbfyQDxmEpDC7L0YkZ3nVRYjyuKSDY7BiyXBz7vTd1TU2i5Bh3USp8mO+XfmGV4uEb+2GMMZizEA1jRZPdeZ+DoZOO4Zk9FPVJmUsi0GaF+5eUxAktaUAqeejl1DQn4WIncLXErqR6aH0Z3OhL8hjT8FlVp4api0bicsYkCHPrejwDGIi1J2jRKN5yPkEfXNd7yFq2RHtUt6eKfXO5qTIc5mjL5Y78K78wmRNEDRw4o5kf5auVJ1+4IOFIClQ5dIrXW/N+id2l+KXDR0YDkFWTS6pDKXHVWpEJGce3ZIvL+3I2eiliAcUw24eiiF1u37w9he8NFULBXPIkokaDFjjBoSZSSvsEHQk2DB4NmSmZwVnn8iNurs3UL+sGJS7zQohr2T7zw1C7PsH13DDqk1glIQJwq7GQnZAOH0jr9XQcyEr0ZhSWqA="
+    
+env:
+  global:
+    - SONAR=true
+    - ARCH="x86_64-pc-linux-gnu"
+#    - SONAR_TOKEN: "4d2287771b1411b6e4464dc639007c3fc4976609"
+ 
+before_install:
+  - sudo apt-get update -qq # make the output less noisy
+
+script:
+  - echo " The env is:"
+  - env
+  - echo "-------------------------------------"  
+  - cd depends
+  - echo "About to build depends with $(nproc --all)"
+  - ./run-with-dots.sh make HOST=$ARCH -j$(nproc --all) > /dev/null 2>&1
+  - echo "-------------------------------------"
+  - echo Finished makeing depends, still at directory $(pwd)
+  - cd ..
+  - echo "About to make autogen.sh i directory $(pwd)"
+  - ./autogen.sh
+  - echo "-------------------------------------"
+  - echo "About to ./configure in dire $(pwd)"
+  - mkdir -p build 
+  - CONFIG_SITE=$(pwd)/depends/$ARCH/share/config.site ./configure --prefix=$(pwd)/build/$ARCH
+  - echo "-------------------------------------"
+  - echo "About to make with -j$(nproc --all)"
+  - build-wrapper-linux-x86-64 --out-dir bw-output make -j$(nproc --all) clean all || ( echo "Build failure. Verbose build follows." && false )
+  - echo "-------------------------------------"
+  - echo "About to run sonar-scanner"
+  - sonar-scanner -Dsonar.cfamily.build-wrapper-output=bw-output
+  - echo "-------------------------------------"
+  - echo "Process ended"
